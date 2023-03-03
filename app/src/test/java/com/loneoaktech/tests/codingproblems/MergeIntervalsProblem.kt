@@ -25,6 +25,10 @@ class MergeIntervalsProblem {
         9..10
     )
 
+    private val solution1 = listOf(
+        1..3, 6..11
+    )
+
     fun List<IntRange>.mergeIntervals() = this.sortedBy { it.first }.fold( listOf<IntRange>() ){ mergedList, np ->
         if ( mergedList.isEmpty() )
             listOf(np)
@@ -59,7 +63,7 @@ class MergeIntervalsProblem {
         val intervals1Result = intervals1.mergeIntervals()
 
         println("result=$intervals1Result")
-        assertEquals( listOf( 1..3, 6..11), intervals1Result)
+        assertEquals(solution1, intervals1Result)
     }
 
     @Test
@@ -137,6 +141,7 @@ class MergeIntervalsProblem {
         }
 
         println("Results=$results")
+        assertEquals(solution1, results)
     }
 
     fun List<IntRange>.flowSortMerge(buffered: Boolean=false): List<IntRange> = runBlocking {
@@ -163,10 +168,10 @@ class MergeIntervalsProblem {
         assertEquals(singleArg, singleResult)
 
         val interval1Result = intervals1.flowSortMerge()
-        assertEquals( listOf( 1..3, 6..11), interval1Result)
+        assertEquals( solution1, interval1Result)
 
         val interval1Drop1Result = intervals1.drop(1).flowSortMerge()
-        assertEquals( listOf( 1..3, 6..11), interval1Drop1Result)
+        assertEquals( solution1, interval1Drop1Result)
 
     }
 
