@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import java.lang.Long.max
-import kotlin.system.measureTimeMillis
+import kotlin.system.measureNanoTime
 import kotlin.test.assertEquals
 
 @Suppress("MemberVisibilityCanBePrivate") // this didn't seem to be working correctly
@@ -59,12 +59,44 @@ class MaximumProfit {
         1 to 1
     )
 
+    val sample4 = listOf(
+        1 to 1,
+        2 to 2,
+        3 to 3,
+        4 to 4,
+        5 to 5,
+        6 to 6,
+        7 to 7,
+        8 to 8,
+        9 to 9,
+        10 to 10
+    )
+
     val tests = listOf(
         sample1 to 15,
         sample2 to 12,
-        sample3 to -1
+        sample3 to -1,
+        sample4 to 27
     )
 
+    //---- Solution ----
+
+    // Basic strategy:
+    //    1. Create a mechanism to iterate over all the possible triplets. Since
+    //       the triplet indexes (i,j,k) must obey i < j < k, the total number of
+    //       possible triplets is less the the combinatorial number, so the method
+    //       should take advantage of the i<j<k when generating test cases.
+    //
+    //    2. Once we can iterate of over the valid index triplets, then extract
+    //       the prices and test to see if they pass the  price[i] < price[j] < price[k]
+    //
+    //    3. then sum the profits for the triplets that meet #2, and find the max.
+
+    /**
+     * Create a list of index triples in a way that
+     * the integration algorithm can be separately tested
+     * from the price/profit logic
+     */
     fun generateAscendingTripleIndexes(domain: Int): List<List<Int>> {
         if (domain < 3)
             throw IllegalArgumentException("Input list size ($domain must be >= e")
@@ -80,19 +112,48 @@ class MaximumProfit {
         return results
     }
 
-    @Test
-    fun testIndexGenerator() {
-        val expected4 = listOf( listOf(0,1,2), listOf(0,1,3), listOf(0,2,3), listOf(1,2,3))
+    /**
+     * Possibly a better solution:
+     * Iterate over the indexes w/o generating lists (save a bit of memory).
+     * But still in a way that can be tested separately.
+     *
+     * (interestingly, in the tests below, this ran slightly slower than the list version.
+     *  though the test list lengths are fairly low, could more of a difference for very
+     *  large data sets)
+     */
+    fun foldAscendingTripleIndexes(domain: Int, folder: (List<Int>)->Unit ) {
+        if (domain < 3)
+            throw IllegalArgumentException("Input list size ($domain must be >= e")
 
-        assertEquals(expected4, generateAscendingTripleIndexes(4))
+        for( i in 0..(domain-3) )
+            for( j in i+1..(domain-2))
+                for( k in j+1 until domain){
+                    folder(listOf(i,j,k))
+                }
+    }
+
+    private val expectedD4Triples = listOf( listOf(0,1,2), listOf(0,1,3), listOf(0,2,3), listOf(1,2,3))
+
+    @Test
+    fun testIndexListGenerator() {
+        assertEquals(expectedD4Triples, generateAscendingTripleIndexes(4))
 
         val expected3 = listOf( listOf(0,1,2))
         assertEquals(expected3, generateAscendingTripleIndexes(3))
     }
 
+
+    @Test
+    fun testIndexFoldGenerator() {
+        val triples = mutableListOf<List<Int>>()
+
+        foldAscendingTripleIndexes(4) { l -> triples.add(l) }
+        assertEquals(expectedD4Triples, triples)
+    }
+
     /**
-     * Generic method that creates a new list by selecting elements from
-     * this list using a list of indexes
+     * Now create a method to extract the price/profit pairs by creating a new list by selecting
+     * elements from 'this' list using a list of indexes
      */
     fun <T> List<T>.selectElements(ndx: List<Int>): List<T> {
         val results = mutableListOf<T>()
@@ -165,6 +226,8 @@ class MaximumProfit {
     }
 
     /**
+     * Put the components above together to generate the answer.
+     *
      * Finds the max profit for 3 selected days from the list of pairs
      * of (price, profit) where the price of each of the days is ascending
      * through the 3 days
@@ -174,6 +237,8 @@ class MaximumProfit {
 
         var maxProfit = -1L
 
+        // This first generates a list of possible index triplets, then
+        // tests the prices and computes the profits.
         generateAscendingTripleIndexes(this.size).forEach { ndx ->
             val triplet = this.selectElements(ndx)
             if ( triplet.isAscending { it.first }){
@@ -187,17 +252,49 @@ class MaximumProfit {
 
     @Test
     fun testFindMaxProfit() {
-
-        measureTimeMillis {
+        measureNanoTime {
             tests.forEach { (l, pr) ->
                 assertEquals( pr.toLong(), l.findMaxProfit() )
             }
         }.let {
-            println("List version to $it msec for all tests")
+            println("List version took ${it/1000} for all tests")
         }
 
     }
 
+    /**
+     * Compute the max profit using the fold algorithm.
+     */
+    fun List<Pair<Int,Int>>.foldMaxProfit(): Long {
+
+        var maxProfit = -1L
+
+        // As valid triplets are created, immediately
+        // test against the price rule and compute profit,
+        // avoiding creating the list.
+        // This essentially uses the List.fold technique, except
+        // the accumulator is pass in a closure rather than through call arguments.
+        foldAscendingTripleIndexes( this.size){ ndx ->
+            val triplet = this.selectElements(ndx)
+            if ( triplet.isAscending { it.first }){
+                val p = triplet.sumSelection { it.second }
+                maxProfit = max(maxProfit,p)
+            }
+        }
+
+        return maxProfit
+    }
+
+    @Test
+    fun testFoldMaxProfit() {
+        measureNanoTime {
+            tests.forEach { (l, pr) ->
+                assertEquals( pr.toLong(), l.foldMaxProfit() )
+            }
+        }.let {
+            println("Fold version took ${it/1000} for all tests")
+        }
+    }
 
     /**
      *  For the hard core - a flow version (uses less memory, for is slower.
@@ -226,13 +323,12 @@ class MaximumProfit {
 
     @Test
     fun testFlowMaxProfit() {
-
-        measureTimeMillis {
+        measureNanoTime {
             tests.forEach { (l, pr) ->
                 assertEquals(pr.toLong(), l.flowMaxProfit())
             }
         }.let {
-            println("Flow version took $it msec for all tests")
+            println("Flow version took ${it/1000} microseconds for all tests")
             // Uses less memory (creates fewer lists) but is a lot slower.
         }
 
